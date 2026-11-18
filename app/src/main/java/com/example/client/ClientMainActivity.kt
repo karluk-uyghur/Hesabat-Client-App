@@ -24,7 +24,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -75,7 +75,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-// باشقۇرغۇچى ئەپى بىلەن 100% ئورتاق شىفىرلىق ئاچقۇچ ۋە باشقۇرغۇچى ئېلخەت ئادرېسى
 const val ADMIN_MASTER_EMAIL = "uyghur162142@gmail.com"
 const val SHARED_CRYPTO_SALT = "HESABAT_SYNC_2026_SECRET"
 const val CURRENT_CLIENT_VERSION = "1.0.0"
@@ -130,8 +129,8 @@ class ClientMainActivity : ComponentActivity() {
 }
 
 data class RegisteredAuthUser(
-    val identifier: String, // Gmail ياكى ئىسىم ياكى ھېسابات نامى
-    val authMethod: String, // BY_GMAIL, BY_NAME, BY_ACCOUNT_ID
+    val identifier: String,
+    val authMethod: String,
     val fullName: String,
     val gmail: String,
     val passwordHash: String,
@@ -155,7 +154,7 @@ data class PersonAccountItem(
     val password: String,
     val streetName: String,
     val houseNumber: String,
-    val flowAmount: String, // ئېقىم مىقدارى (مەسىلەن: 100 GB)
+    val flowAmount: String,
     val openDate: String,
     val notes: String,
     val paidMonths: List<Boolean>
@@ -231,9 +230,6 @@ class ClientVaultManager(private val context: Context) {
         prefs.edit().putString("cloud_sync_url", url.trim()).commit()
     }
 
-    /**
-     * باشقۇرغۇچى ئەپىدە چىقىرىلغان كودنى دەلىللەش (Gmail، ئىسىم ياكى ھېسابات نامىنىڭ قايسىسى بىلەن چىقىرىلغان بولسا شۇنى تونۇيدۇ)
-     */
     private fun generateExpectedCode(key: String, isVip: Boolean): String {
         val clean = key.trim().lowercase()
         if (clean.isEmpty()) return ""
@@ -677,7 +673,6 @@ class ClientVaultManager(private val context: Context) {
         return runCatching {
             val root = JSONObject(jsonText)
 
-            // 1. باشقۇرغۇچى ئەۋەتكەن يېڭى نەشر ئۇچۇرىنى قوبۇل قىلىش
             root.optJSONObject("appUpdate")?.let { upd ->
                 prefs.edit()
                     .putString("remote_upd_version", upd.optString("versionName"))
@@ -688,7 +683,6 @@ class ClientVaultManager(private val context: Context) {
                     .commit()
             }
 
-            // 2. باشقۇرغۇچى ئەۋەتكەن يىراقتىن باشقۇرۇش تەڭشەكلىرىنى قوبۇل قىلىش
             root.optJSONObject("clientConfig")?.let { cfg ->
                 prefs.edit()
                     .putBoolean("remote_cfg_allow_reg", cfg.optBoolean("allowNewRegistration", true))
@@ -705,7 +699,6 @@ class ClientVaultManager(private val context: Context) {
                 prefs.edit().putString("feedback_v4", it.toString()).commit()
             }
 
-            // 3. باشقۇرغۇچى ئېچىپ بەرگەن ھېساباتلارنى قوبۇل قىلىش
             val accArr = root.optJSONArray("accounts") ?: return@runCatching 0
             val authUsers = loadRegisteredUsers().toMutableList()
 
@@ -798,6 +791,93 @@ fun ClientBrandLogo(
     }
 }
 
+/**
+ * ئىزدىگەندە ياكى تىزىملىكنى ئاچقاندا پەقەت «رەت نومۇرى + سىنبەلگە + كىشى ئىسمى» لا چىقىدىغان ئىخچام قۇر.
+ * (ئىچىدىكى باشقا مەلۇماتلار كۆرۈنمەيدۇ، پەقەت مۇشۇ ئىسىمنى چەككەندىلا تولۇق مەلۇماتى ئېچىلىدۇ)
+ */
+@Composable
+fun PersonNameOnlyRow(
+    orderNumber: Int,
+    item: PersonAccountItem,
+    cardColor: Color,
+    textColor: Color,
+    onClick: () -> Unit
+) {
+    val isFullyPaid = item.paidCount() == 12
+    val iconAccent = if (isFullyPaid) ClientEmerald else RoyalGold
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        shape = RoundedCornerShape(18.dp),
+        color = cardColor,
+        border = BorderStroke(1.2.dp, iconAccent.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                // رەت تەرتىپ نومۇرى (1, 2, 3...)
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(RoyalGold.copy(alpha = 0.2f))
+                        .border(1.dp, RoyalGold, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "$orderNumber",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = RoyalGold
+                    )
+                }
+
+                // مەخسۇس كىشى سىنبەلگىسى
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Brush.linearGradient(listOf(RoyalCrimson, RoyalGold))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Person,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                // پەقەت كىشىنىڭ ئىسمىلا كۆرۈنىدۇ
+                Text(
+                    text = item.fullName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = textColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Icon(
+                imageVector = Icons.Filled.ChevronLeft,
+                contentDescription = null,
+                tint = RoyalGold,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+}
+
 @Composable
 fun ClientRootApp() {
     val context = LocalContext.current
@@ -829,7 +909,6 @@ fun ClientRootApp() {
     var showAddEditDialog by remember { mutableStateOf(false) }
     var editingPerson by remember { mutableStateOf<PersonAccountItem?>(null) }
 
-    // ھەقىقىي، مۇقىم، خالىغانچە جۆيلىمەيدىغان تور ئېقىمى ۋە Fast.com ئۆلچىگۈچ ھالىتى
     var isNetworkConnected by remember { mutableStateOf(false) }
     var connectionTypeLabel by remember { mutableStateOf("") }
     var liveDownKbps by remember { mutableFloatStateOf(0f) }
@@ -875,7 +954,6 @@ fun ClientRootApp() {
             } else {
                 val dRx = (nowRx - prevRx).coerceAtLeast(0L)
                 val dTx = (nowTx - prevTx).coerceAtLeast(0L)
-                // تۇيۇقسىز سەكرەشنىڭ ئالدىنى ئېلىش ئۈچۈن سىلىقلاشتۇرۇلغان ھەقىقىي قىممەت
                 val instantDown = (dRx / 1024f) / dtSec
                 val instantUp = (dTx / 1024f) / dtSec
                 liveDownKbps = if (instantDown < 0.2f) 0f else (liveDownKbps * 0.35f + instantDown * 0.65f)
@@ -972,7 +1050,6 @@ fun ClientRootApp() {
                     )
                 }
 
-                // ئەگەر باشقۇرغۇچى ئەپنى يىراقتىن قۇلۇپلىغان بولسا
                 if (remoteConfig.remoteMaintenanceLock) {
                     Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                         Surface(
@@ -1040,7 +1117,6 @@ fun ClientRootApp() {
                     val currentUser = activeUser!!
 
                     if (homeOverlay != HomeOverlayView.NONE) {
-                        BackHandler { homeOverlay = HomeOverlayView.NONE }
                         ClientDedicatedOverlayPage(
                             lang = lang,
                             overlayType = homeOverlay,
@@ -1186,7 +1262,6 @@ fun ClientRootApp() {
                                     }
                                 }
 
-                                // باشقۇرغۇچى ئەۋەتكەن يېڭى نەشر ئۇقتۇرۇشى بولسا كۆرسىتىش
                                 remoteUpdate?.let { upd ->
                                     if (upd.targetAccount == "ALL" || upd.targetAccount.equals(currentUser.identifier, ignoreCase = true)) {
                                         Surface(
@@ -1248,7 +1323,10 @@ fun ClientRootApp() {
                                             textColor = textColor,
                                             onSearchQueryChange = { searchQuery = it },
                                             onTriggerSearch = { homeOverlay = HomeOverlayView.SEARCH_RESULTS },
-                                            onOpenCategoryOverlay = { targetOverlay -> homeOverlay = targetOverlay },
+                                            onOpenCategoryOverlay = { targetOverlay ->
+                                                searchQuery = ""
+                                                homeOverlay = targetOverlay
+                                            },
                                             onRunFastSpeedTest = {
                                                 if (!isRunningFastTest) {
                                                     if (!isNetworkConnected) {
@@ -1432,10 +1510,6 @@ fun ClientRootApp() {
     }
 }
 
-/**
- * تىزىملىتىپ كىرىش ئېكرانى:
- * ئېنىق قىلىپ «1. Gmail ئارقىلىق تىزىملىتىش» / «2. ئىسىم ئارقىلىق تىزىملىتىش» / «3. ھېسابات نامى ئارقىلىق كىرىش» تىزىملىكى بىلەن چىقىدۇ
- */
 @Composable
 fun ClientStructuredAuthScreen(
     lang: ClientLanguage,
@@ -1490,7 +1564,6 @@ fun ClientStructuredAuthScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // تىل تاللاش (ئۇيغۇرچە / العربية)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
@@ -1515,7 +1588,6 @@ fun ClientStructuredAuthScreen(
                     textAlign = TextAlign.Center
                 )
 
-                // كىرىش / تىزىملىتىش / كود دەلىللەش باسقۇچى
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1553,7 +1625,6 @@ fun ClientStructuredAuthScreen(
                     )
                 }
 
-                // ئېنىق قىلىپ Gmail ئارقىلىق تىزىملىتىش / ئىسىم ئارقىلىق تىزىملىتىش تىزىملىكلىرى
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1597,7 +1668,6 @@ fun ClientStructuredAuthScreen(
                     }
                 }
 
-                // ساقلانغان ھېساباتلار بولسا تېز تاللاش
                 if (registeredUsers.isNotEmpty() && !awaitingCodeStep) {
                     Row(
                         modifier = Modifier
@@ -1640,7 +1710,6 @@ fun ClientStructuredAuthScreen(
                     }
                 }
 
-                // تاللانغان ئۇسۇلغا ماس كىرگۈزۈش رامكىلىرى
                 when (selectedMethod) {
                     RegistrationAuthMethod.BY_GMAIL -> {
                         OutlinedTextField(
@@ -1874,9 +1943,6 @@ fun ClientStructuredAuthScreen(
     }
 }
 
-/**
- * 1-بەت: باش بەت + سىنبەلگىلىك كارتىلار + دەل ۋە مۇقىم ئىشلەيدىغان Fast.com تور ئۆلچىگۈچ
- */
 @Composable
 fun ClientHomeScreen(
     lang: ClientLanguage,
@@ -1926,7 +1992,7 @@ fun ClientHomeScreen(
             }
         }
 
-        // 1. باش بەت ئىزدەش رامكىسى
+        // 1. باش بەت ئىزدەش رامكىسى (ئىزدىگەندە پەقەت كىشى ئىسىملىرىلا رەت تەرتىپ بىلەن چىقىدۇ)
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = cardColor,
@@ -1937,7 +2003,7 @@ fun ClientHomeScreen(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
                     placeholder = {
-                        Text(tr(lang, "ئىسىم، كوچا، ئادرېس ياكى ئېقىم بويىچە ئىزدەش...", "البحث بالاسم أو الشارع أو العنوان أو الحصة..."))
+                        Text(tr(lang, "كىشى ئىسمى، كوچا ياكى ھېساباتنى ئىزدەش...", "البحث باسم الشخص أو الشارع أو الحساب..."))
                     },
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = RoyalGold) },
                     trailingIcon = {
@@ -1960,14 +2026,14 @@ fun ClientHomeScreen(
             }
         }
 
-        // 2. سىنبەلگە بىلەنلا كۆرۈنىدىغان 3 بۆلۈم (ئىچىدىكى مەزمۇنى يوشۇرۇن، چەككەندە ئېچىلىدۇ)
+        // 2. سىنبەلگە بىلەنلا كۆرۈنىدىغان 3 بۆلۈم (باسقاندا پەقەت كىشى ئىسىملىرى رەت تەرتىپ بىلەن چىقىدۇ)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             HomeIconOnlyCard(
                 title = tr(lang, "جەمئىي ھېساباتلار", "إجمالي الحسابات"),
-                subtitle = tr(lang, "چېكىپ كۆرۈش ($totalCount)", "اضغط للعرض ($totalCount)"),
+                subtitle = tr(lang, "ئىسىملار تىزىملىكى ($totalCount)", "قائمة الأسماء ($totalCount)"),
                 icon = Icons.Filled.Group,
                 accent = ClientIndigo,
                 cardColor = cardColor,
@@ -1977,7 +2043,7 @@ fun ClientHomeScreen(
             )
             HomeIconOnlyCard(
                 title = tr(lang, "ھەق تاپشۇرغانلار", "الدافعون بالكامل"),
-                subtitle = tr(lang, "چېكىپ كۆرۈش ($paidCount)", "اضغط للعرض ($paidCount)"),
+                subtitle = tr(lang, "ئىسىملار تىزىملىكى ($paidCount)", "قائمة الأسماء ($paidCount)"),
                 icon = Icons.Filled.CheckCircle,
                 accent = ClientEmerald,
                 cardColor = cardColor,
@@ -1989,7 +2055,7 @@ fun ClientHomeScreen(
 
         HomeIconOnlyCard(
             title = tr(lang, "قەرزگە ئاچقۇزغانلار", "الحسابات المفتوحة بالدين"),
-            subtitle = tr(lang, "چېكىپ تەپسىلاتىنى كۆرۈش ($debtCount)", "اضغط لعرض التفاصيل ($debtCount)"),
+            subtitle = tr(lang, "ئىسىملار تىزىملىكىنى كۆرۈش ($debtCount)", "عرض قائمة الأسماء ($debtCount)"),
             icon = Icons.Filled.WarningAmber,
             accent = ClientRose,
             cardColor = cardColor,
@@ -1998,7 +2064,7 @@ fun ClientHomeScreen(
             onClick = { onOpenCategoryOverlay(HomeOverlayView.DEBT_ACCOUNTS) }
         )
 
-        // 3. تۈزىتىلگەن ھەقىقىي FAST.com تور ئېقىم مىقدارى ۋە تېزلىك ئۆلچىگۈچ
+        // 3. FAST.com تور ئېقىم مىقدارى ۋە تېزلىك ئۆلچىگۈچ
         Surface(
             shape = RoundedCornerShape(26.dp),
             color = cardColor,
@@ -2051,7 +2117,6 @@ fun ClientHomeScreen(
                     }
                 }
 
-                // چوڭ FAST.com سائەت ئېكرانى
                 val activeMbpsDisplay = when {
                     isRunningSpeedTest -> fastLiveGaugeMbps
                     lastFastResult != null -> lastFastResult.downloadMbps
@@ -2093,7 +2158,6 @@ fun ClientHomeScreen(
                     }
                 }
 
-                // شۇ ۋاقىتتىكى ھەقىقىي ئېقىم (جۆيلىمەي پەقەت ئەمەلىي ئېقىمنى كۆرسىتىدۇ)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -2209,9 +2273,6 @@ fun HomeIconOnlyCard(
     }
 }
 
-/**
- * 2-بەت: تەڭشەكلەر (تەگلىك، باش سۈرەت/لوگو، ئۇيغۇرچە/ئەرەبچە تىل، كېچە-كۈندۈزلۈك ھالەت، باشقۇرغۇچى ئەپىگە باغلاش)
- */
 @Composable
 fun ClientSettingsScreen(
     lang: ClientLanguage,
@@ -2254,7 +2315,6 @@ fun ClientSettingsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(bottom = 84.dp)
     ) {
-        // 1. تىل (ئۇيغۇرچە / العربية) ۋە كېچە-كۈندۈزلۈك تەڭشەك
         item {
             Surface(
                 shape = RoundedCornerShape(22.dp),
@@ -2294,7 +2354,6 @@ fun ClientSettingsScreen(
             }
         }
 
-        // 2. تەگلىك رەسىم ۋە باش سۈرەت / لوگو تەڭشىكى
         item {
             Surface(
                 shape = RoundedCornerShape(22.dp),
@@ -2347,7 +2406,6 @@ fun ClientSettingsScreen(
             }
         }
 
-        // 3. باشقۇرغۇچى ئەپىگە باغلاش ۋە ئامبارنى تازىلاش
         item {
             Surface(
                 shape = RoundedCornerShape(22.dp),
@@ -2421,7 +2479,8 @@ fun ClientSettingsScreen(
 }
 
 /**
- * 3-بەت: ھېساباتلار (ئىسمى، ھېسابات ئىسمى، مەخپىي نومۇرى، ئېقىم مىقدارى، تىزىملاتقان ۋاقتى، پۇل تۆلىگەن ئايلار)
+ * 3-بەت: ھېساباتلار بېتىمۇ رەت تەرتىپ بويىچە پەقەت ئىسىم ۋە سىنبەلگە بىلەنلا كۆرۈنىدۇ،
+ * ئىسىمنى چەككەندە ئاندىن شۇ كىشىنىڭ تولۇق مەلۇماتلىرى چىقىدۇ!
  */
 @Composable
 fun ClientAccountsScreen(
@@ -2435,57 +2494,124 @@ fun ClientAccountsScreen(
     onDelete: (PersonAccountItem) -> Unit,
     onCopy: (String, String) -> Unit
 ) {
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(bottom = 84.dp)
-    ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = tr(lang, "بارلىق ساقلانغان ھېساباتلار (${accounts.size})", "جميع الحسابات المحفوظة (${accounts.size})"),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = textColor
-                )
-                OutlinedButton(
-                    onClick = onSearchClick,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, RoyalGold)
-                ) {
-                    Icon(Icons.Filled.Search, contentDescription = null, tint = RoyalGold, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(tr(lang, "ئىزدەش", "بحث"), color = RoyalGold)
-                }
-            }
-        }
+    var selectedPersonId by remember { mutableStateOf<String?>(null) }
+    val selectedPerson = remember(accounts, selectedPersonId) {
+        accounts.firstOrNull { it.id == selectedPersonId }
+    }
 
-        if (accounts.isEmpty()) {
+    if (selectedPerson != null) {
+        BackHandler { selectedPersonId = null }
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = 84.dp)
+        ) {
             item {
-                Surface(shape = RoundedCornerShape(22.dp), color = cardColor, modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = tr(lang, "تېخى ھېسابات خاتىرىلەنمىگەن. ئاستىدىكى «يېڭى ھېسابات قوشۇش» كۇنۇپكىسىنى بېسىپ قوشۇڭ.", "لا توجد حسابات مسجلة بعد. اضغط على زر إضافة حساب جديد."),
-                        modifier = Modifier.padding(28.dp),
-                        textAlign = TextAlign.Center,
-                        color = textColor
-                    )
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = cardColor,
+                    border = BorderStroke(1.2.dp, RoyalGold)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = { selectedPersonId = null },
+                            colors = ButtonDefaults.buttonColors(containerColor = RoyalGold),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Color.Black)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(tr(lang, "تىزىملىككە قايتىش", "العودة للقائمة"), color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
+                        Text(
+                            text = selectedPerson.fullName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = textColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
-        } else {
-            items(accounts, key = { it.id }) { item ->
+
+            item {
                 ClientPersonAccountCard(
                     lang = lang,
-                    item = item,
+                    item = selectedPerson,
                     cardColor = cardColor,
                     textColor = textColor,
-                    onToggleMonth = { mIdx -> onToggleMonth(item, mIdx) },
-                    onEdit = { onEdit(item) },
-                    onDelete = { onDelete(item) },
+                    onToggleMonth = { mIdx -> onToggleMonth(selectedPerson, mIdx) },
+                    onEdit = { onEdit(selectedPerson) },
+                    onDelete = {
+                        onDelete(selectedPerson)
+                        selectedPersonId = null
+                    },
                     onCopy = onCopy
                 )
+            }
+        }
+    } else {
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 84.dp)
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = tr(lang, "بارلىق ھېساباتلار تىزىملىكى (${accounts.size})", "قائمة جميع الحسابات (${accounts.size})"),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = textColor
+                        )
+                        Text(
+                            text = tr(lang, "تەپسىلاتىنى كۆرۈش ئۈچۈن كىشى ئىسمىنى چېكىڭ", "اضغط على اسم الشخص لعرض كافة التفاصيل"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = RoyalGold
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = onSearchClick,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, RoyalGold)
+                    ) {
+                        Icon(Icons.Filled.Search, contentDescription = null, tint = RoyalGold, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(tr(lang, "ئىزدەش", "بحث"), color = RoyalGold)
+                    }
+                }
+            }
+
+            if (accounts.isEmpty()) {
+                item {
+                    Surface(shape = RoundedCornerShape(22.dp), color = cardColor, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = tr(lang, "تېخى ھېسابات خاتىرىلەنمىگەن. ئاستىدىكى «يېڭى ھېسابات قوشۇش» كۇنۇپكىسىنى بېسىپ قوشۇڭ.", "لا توجد حسابات مسجلة بعد. اضغط على زر إضافة حساب جديد."),
+                            modifier = Modifier.padding(28.dp),
+                            textAlign = TextAlign.Center,
+                            color = textColor
+                        )
+                    }
+                }
+            } else {
+                itemsIndexed(accounts, key = { _, it -> it.id }) { index, item ->
+                    PersonNameOnlyRow(
+                        orderNumber = index + 1,
+                        item = item,
+                        cardColor = cardColor,
+                        textColor = textColor,
+                        onClick = { selectedPersonId = item.id }
+                    )
+                }
             }
         }
     }
@@ -2550,7 +2676,6 @@ fun ClientPersonAccountCard(
                     }
                 }
 
-                // ئېقىم مىقدارى بەلگىسى (كارتا ئۈستىدە ئېنىق كۆرۈنىدۇ)
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = ClientTurquoise.copy(alpha = 0.18f),
@@ -2572,7 +2697,6 @@ fun ClientPersonAccountCard(
                 }
             }
 
-            // ھېسابات ئىسمى، مەخپىي نومۇرى، ئېقىم مىقدارى ۋە ئادرېسى
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = Color.Black.copy(alpha = 0.15f),
@@ -2635,7 +2759,6 @@ fun ClientPersonAccountCard(
                 }
             }
 
-            // پۇل تۆلىگەن ئايلار (12 ئاي)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2695,9 +2818,6 @@ fun ClientPersonAccountCard(
     }
 }
 
-/**
- * 4-بەت: ئەسلەتمىلەر
- */
 @Composable
 fun ClientRemindersAndFeedbackScreen(
     lang: ClientLanguage,
@@ -2729,7 +2849,7 @@ fun ClientRemindersAndFeedbackScreen(
             )
         }
 
-        items(myReminders, key = { it.id }) { rem ->
+        itemsIndexed(myReminders, key = { _, it -> it.id }) { _, rem ->
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = cardColor,
@@ -2786,7 +2906,7 @@ fun ClientRemindersAndFeedbackScreen(
             }
         }
 
-        items(feedbacks, key = { it.id }) { fb ->
+        itemsIndexed(feedbacks, key = { _, it -> it.id }) { _, fb ->
             Surface(
                 shape = RoundedCornerShape(18.dp),
                 color = cardColor,
@@ -2808,6 +2928,11 @@ fun ClientRemindersAndFeedbackScreen(
     }
 }
 
+/**
+ * ئىزدىگەندە ياكى باش بەتتىكى مۇناسىۋەتلىك رامكىلارنى باسقاندا ئېچىلىدىغان بەت:
+ * 1-قەدەمدە پەقەت «رەت نومۇرى + سىنبەلگە + كىشى ئىسمى» لا تىزىلىپ چىقىدۇ؛
+ * 2-قەدەمدە شۇ ئىسىمنى چەككەندە ئاندىن شۇ كىشىنىڭ قالغان بارلىق مەلۇماتلىرى تولۇق ئېچىلىدۇ!
+ */
 @Composable
 fun ClientDedicatedOverlayPage(
     lang: ClientLanguage,
@@ -2823,6 +2948,19 @@ fun ClientDedicatedOverlayPage(
     onDelete: (PersonAccountItem) -> Unit,
     onCopy: (String, String) -> Unit
 ) {
+    var selectedPersonId by remember { mutableStateOf<String?>(null) }
+    val selectedPerson = remember(allAccounts, selectedPersonId) {
+        allAccounts.firstOrNull { it.id == selectedPersonId }
+    }
+
+    BackHandler {
+        if (selectedPerson != null) {
+            selectedPersonId = null
+        } else {
+            onBack()
+        }
+    }
+
     val cleanQ = searchQuery.trim().lowercase()
     val filteredList = remember(allAccounts, overlayType, cleanQ) {
         val base = when (overlayType) {
@@ -2849,88 +2987,150 @@ fun ClientDedicatedOverlayPage(
     }
 
     Scaffold(containerColor = Color.Transparent) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Surface(
-                    shape = RoundedCornerShape(22.dp),
-                    color = cardColor,
-                    border = BorderStroke(1.2.dp, RoyalGold)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (selectedPerson != null) {
+            // 2-قەدەم: ئىسىمنى چەككەندە ئېچىلىدىغان تولۇق تەپسىلات بېتى
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(22.dp),
+                        color = cardColor,
+                        border = BorderStroke(1.2.dp, RoyalGold)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
                             Button(
-                                onClick = onBack,
+                                onClick = { selectedPersonId = null },
                                 colors = ButtonDefaults.buttonColors(containerColor = RoyalGold),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Color.Black)
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text(tr(lang, "قايتىش", "رجوع"), color = Color.Black, fontWeight = FontWeight.Bold)
+                                Text(tr(lang, "ئىسىملار تىزىملىكىگە قايتىش", "العودة لقائمة الأسماء"), color = Color.Black, fontWeight = FontWeight.Bold)
                             }
-                            Text(pageTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = textColor)
+                            Text(
+                                text = selectedPerson.fullName,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = textColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = onSearchQueryChange,
-                            placeholder = { Text(tr(lang, "ئىسىم، كوچا، ئادرېس ياكى ئېقىم مىقدارىنى يېزىڭ...", "ابحث بالاسم أو الشارع أو الحصة...")) },
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = RoyalGold) },
-                            trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { onSearchQueryChange("") }) {
-                                        Icon(Icons.Filled.Close, contentDescription = null)
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
                     }
                 }
-            }
 
-            if (filteredList.isEmpty()) {
                 item {
-                    Surface(shape = RoundedCornerShape(20.dp), color = cardColor, modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier.padding(32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Filled.SearchOff, contentDescription = null, tint = ClientRose, modifier = Modifier.size(44.dp))
-                            Text(tr(lang, "ماس كېلىدىغان ھېسابات تېپىلمىدى", "لم يتم العثور على حساب مطابق"), fontWeight = FontWeight.Bold, color = textColor)
-                        }
-                    }
-                }
-            } else {
-                items(filteredList, key = { it.id }) { item ->
                     ClientPersonAccountCard(
                         lang = lang,
-                        item = item,
+                        item = selectedPerson,
                         cardColor = cardColor,
                         textColor = textColor,
-                        onToggleMonth = { mIdx -> onToggleMonth(item, mIdx) },
-                        onEdit = { onEdit(item) },
-                        onDelete = { onDelete(item) },
+                        onToggleMonth = { mIdx -> onToggleMonth(selectedPerson, mIdx) },
+                        onEdit = { onEdit(selectedPerson) },
+                        onDelete = {
+                            onDelete(selectedPerson)
+                            selectedPersonId = null
+                        },
                         onCopy = onCopy
                     )
+                }
+            }
+        } else {
+            // 1-قەدەم: پەقەت كىشى ئىسىملىرىلا رەت تەرتىپ بويىچە سىنبەلگە بىلەن چىقىدۇ
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(22.dp),
+                        color = cardColor,
+                        border = BorderStroke(1.2.dp, RoyalGold)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Button(
+                                    onClick = onBack,
+                                    colors = ButtonDefaults.buttonColors(containerColor = RoyalGold),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Color.Black)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(tr(lang, "قايتىش", "رجوع"), color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                                Column {
+                                    Text(pageTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = textColor)
+                                    Text(
+                                        text = tr(lang, "مەلۇماتلىرىنى كۆرۈش ئۈچۈن كىشى ئىسمىنى چېكىڭ", "اضغط على الاسم لعرض كافة البيانات"),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = RoyalGold
+                                    )
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = onSearchQueryChange,
+                                placeholder = { Text(tr(lang, "كىشى ئىسمى، كوچا ياكى ئادرېسنى يېزىڭ...", "ابحث بالاسم أو الشارع أو العنوان...")) },
+                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = RoyalGold) },
+                                trailingIcon = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { onSearchQueryChange("") }) {
+                                            Icon(Icons.Filled.Close, contentDescription = null)
+                                        }
+                                    }
+                                },
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+
+                if (filteredList.isEmpty()) {
+                    item {
+                        Surface(shape = RoundedCornerShape(20.dp), color = cardColor, modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Filled.SearchOff, contentDescription = null, tint = ClientRose, modifier = Modifier.size(44.dp))
+                                Text(tr(lang, "ماس كېلىدىغان ھېسابات تېپىلمىدى", "لم يتم العثور على حساب مطابق"), fontWeight = FontWeight.Bold, color = textColor)
+                            }
+                        }
+                    }
+                } else {
+                    itemsIndexed(filteredList, key = { _, it -> it.id }) { index, item ->
+                        PersonNameOnlyRow(
+                            orderNumber = index + 1,
+                            item = item,
+                            cardColor = cardColor,
+                            textColor = textColor,
+                            onClick = { selectedPersonId = item.id }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-/**
- * يېڭى ھېسابات قۇرۇش ۋە تەھرىرلەش دىئالوگى:
- * ئېقىم مىقدارى (GB) كىرگۈزۈش رامكىسى ۋە تېز تاللاش كۇنۇپكىلىرى تولۇق قوشۇلدى!
- */
 @Composable
 fun PersonAccountFormDialog(
     lang: ClientLanguage,
@@ -2995,7 +3195,6 @@ fun PersonAccountFormDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // ئېقىم مىقدارى (GB) كىرگۈزۈش رامكىسى + تېز تاللاش بەلگىلىرى
                 OutlinedTextField(
                     value = flowAmount,
                     onValueChange = { flowAmount = it },
@@ -3080,15 +3279,11 @@ fun PersonAccountFormDialog(
     )
 }
 
-/**
- * دەل ۋە مۇقىم ئىشلەيدىغان FAST.com تور تېزلىكى ئۆلچىگۈچ (ئۆزى خالىغانچە جۆيلىمەيدۇ، ئەمەلىي چۈشكەن بايت ۋە Ping نى ئۆلچەيدۇ)
- */
 suspend fun runCalibratedFastSpeedTest(
     onProgressMbps: (Float) -> Unit
 ): FastSpeedTestResult = withContext(Dispatchers.IO) {
     val stamp = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
     try {
-        // 1. Ping (كېچىكىش ۋاقتى) نى ئۆلچەش
         val pingStart = SystemClock.elapsedRealtime()
         val pingConn = (URL("https://www.google.com/generate_204").openConnection() as HttpURLConnection).apply {
             connectTimeout = 4000
@@ -3099,7 +3294,6 @@ suspend fun runCalibratedFastSpeedTest(
         pingConn.disconnect()
         val pingMs = (SystemClock.elapsedRealtime() - pingStart).toInt().coerceIn(5, 999)
 
-        // 2. ھەقىقىي ئېقىم چۈشۈرۈپ سۈرئەت ئۆلچەش
         val testUrl = URL("https://speed.cloudflare.com/__down?bytes=4000000")
         val conn = (testUrl.openConnection() as HttpURLConnection).apply {
             connectTimeout = 6000
