@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -85,7 +86,6 @@ val ClientIndigo = Color(0xFF6366F1)
 val ClientTurquoise = Color(0xFF06B6D4)
 val ClientEmerald = Color(0xFF10B981)
 val ClientRose = Color(0xFFF43F5E)
-val ClientAmber = Color(0xFFF59E0B)
 val ClientDarkBg = Color(0xFF070C18)
 val ClientCardBg = Color(0xE6111A2E)
 
@@ -109,6 +109,14 @@ enum class ClientBottomTab(val ugTitle: String, val arTitle: String, val icon: I
     SETTINGS("تەڭشەكلەر", "الإعدادات", Icons.Filled.Settings),
     ACCOUNTS("ھېساباتلار", "الحسابات", Icons.Filled.Group),
     REMINDERS("ئەسلەتمىلەر", "التذكيرات", Icons.Filled.Notifications)
+}
+
+enum class HomeOverlayView {
+    NONE,
+    SEARCH_RESULTS,
+    ALL_ACCOUNTS,
+    PAID_ACCOUNTS,
+    DEBT_ACCOUNTS
 }
 
 class ClientMainActivity : ComponentActivity() {
@@ -755,14 +763,6 @@ class ClientVaultManager(private val context: Context) {
     }
 }
 
-enum class HomeOverlayView {
-    NONE,
-    SEARCH_RESULTS,
-    ALL_ACCOUNTS,
-    PAID_ACCOUNTS,
-    DEBT_ACCOUNTS
-}
-
 @Composable
 fun ClientBrandLogo(
     customAvatar: ImageBitmap?,
@@ -792,8 +792,8 @@ fun ClientBrandLogo(
 }
 
 /**
- * ئىزدىگەندە ياكى تىزىملىكنى ئاچقاندا پەقەت «رەت نومۇرى + سىنبەلگە + كىشى ئىسمى» لا چىقىدىغان ئىخچام قۇر.
- * (ئىچىدىكى باشقا مەلۇماتلار كۆرۈنمەيدۇ، پەقەت مۇشۇ ئىسىمنى چەككەندىلا تولۇق مەلۇماتى ئېچىلىدۇ)
+ * ئىزدىگەندە ياكى رامكىلارنى باسقاندا پەقەت «رەت تەرتىپ نومۇرى + سىنبەلگە + كىشى ئىسمى» لا چىقىدىغان قۇر.
+ * (ئىسىمنى چەككەندە ئاندىن شۇ كىشىنىڭ تولۇق مەلۇماتلىرى ئېچىلىدۇ)
  */
 @Composable
 fun PersonNameOnlyRow(
@@ -824,7 +824,6 @@ fun PersonNameOnlyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                // رەت تەرتىپ نومۇرى (1, 2, 3...)
                 Box(
                     modifier = Modifier
                         .size(34.dp)
@@ -841,7 +840,6 @@ fun PersonNameOnlyRow(
                     )
                 }
 
-                // مەخسۇس كىشى سىنبەلگىسى
                 Box(
                     modifier = Modifier
                         .size(40.dp)
@@ -857,7 +855,6 @@ fun PersonNameOnlyRow(
                     )
                 }
 
-                // پەقەت كىشىنىڭ ئىسمىلا كۆرۈنىدۇ
                 Text(
                     text = item.fullName,
                     style = MaterialTheme.typography.titleMedium,
@@ -906,6 +903,9 @@ fun ClientRootApp() {
     var remoteUpdate by remember { mutableStateOf(vault.loadRemoteAdminUpdate()) }
     var remoteConfig by remember { mutableStateOf(vault.loadRemoteAdminConfig()) }
 
+    var isDownloadingApk by remember { mutableStateOf(false) }
+    var apkDownloadProgress by remember { mutableIntStateOf(0) }
+
     var showAddEditDialog by remember { mutableStateOf(false) }
     var editingPerson by remember { mutableStateOf<PersonAccountItem?>(null) }
 
@@ -918,6 +918,18 @@ fun ClientRootApp() {
     var isRunningFastTest by remember { mutableStateOf(false) }
     var fastLiveGaugeMbps by remember { mutableFloatStateOf(0f) }
     var lastFastResult by remember { mutableStateOf<FastSpeedTestResult?>(null) }
+
+    // قوزغالغاندا باشقۇرغۇچى ئەپىدىن يېڭى نەشر ۋە مەلۇماتلارنى ئاپتوماتىك تەكشۈرۈش
+    LaunchedEffect(Unit) {
+        if (vault.getCloudSyncUrl().isNotBlank()) {
+            vault.syncWithAdminCloud(lang).onSuccess {
+                remoteUpdate = vault.loadRemoteAdminUpdate()
+                remoteConfig = vault.loadRemoteAdminConfig()
+                reminders = vault.loadReminders()
+                feedbacks = vault.loadFeedbacks()
+            }
+        }
+    }
 
     LaunchedEffect(lang) {
         val initialRx = TrafficStats.getTotalRxBytes().takeIf { it != TrafficStats.UNSUPPORTED.toLong() } ?: 0L
@@ -1262,42 +1274,78 @@ fun ClientRootApp() {
                                     }
                                 }
 
+                                // باشقۇرغۇچى ئەپىدىن ۋاسىتىسىز ئەۋەتىلگەن يېڭى نەشرنى ئەپ ئىچىدىلا بىۋاسىتە چۈشۈرۈپ قاچىلاش رامكىسى
                                 remoteUpdate?.let { upd ->
                                     if (upd.targetAccount == "ALL" || upd.targetAccount.equals(currentUser.identifier, ignoreCase = true)) {
                                         Surface(
-                                            shape = RoundedCornerShape(16.dp),
-                                            color = RoyalGold.copy(alpha = 0.2f),
+                                            shape = RoundedCornerShape(18.dp),
+                                            color = RoyalGold.copy(alpha = 0.22f),
                                             border = BorderStroke(1.5.dp, RoyalGold),
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .padding(bottom = 10.dp)
                                         ) {
-                                            Row(
-                                                modifier = Modifier.padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            Column(
+                                                modifier = Modifier.padding(14.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = tr(lang, "يېڭى نەشر تارقىتىلدى: ${upd.versionName}", "يتوفر إصدار جديد: ${upd.versionName}"),
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = textColor
-                                                    )
-                                                    if (upd.releaseNotes.isNotBlank()) {
-                                                        Text(upd.releaseNotes, style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.8f))
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = tr(lang, "🚀 يېڭى نەشر كەلدى: ${upd.versionName}", "🚀 إصدار جديد متاح: ${upd.versionName}"),
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = textColor
+                                                        )
+                                                        if (upd.releaseNotes.isNotBlank()) {
+                                                            Text(upd.releaseNotes, style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.85f))
+                                                        }
+                                                    }
+                                                    if (upd.apkDownloadUrl.isNotBlank()) {
+                                                        Button(
+                                                            onClick = {
+                                                                if (!isDownloadingApk) {
+                                                                    scope.launch {
+                                                                        isDownloadingApk = true
+                                                                        apkDownloadProgress = 1
+                                                                        val res = downloadAndInstallApkInApp(
+                                                                            context = context,
+                                                                            apkUrl = upd.apkDownloadUrl,
+                                                                            onProgressPercent = { pct -> apkDownloadProgress = pct }
+                                                                        )
+                                                                        isDownloadingApk = false
+                                                                        res.onFailure {
+                                                                            snackbarHostState.showSnackbar(
+                                                                                tr(lang, "بىۋاسىتە چۈشۈرۈشتە خاتالىق كۆرۈلدى", "حدث خطأ أثناء التحميل المباشر")
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                }
+                                                            },
+                                                            colors = ButtonDefaults.buttonColors(containerColor = RoyalGold)
+                                                        ) {
+                                                            if (isDownloadingApk) {
+                                                                Text("$apkDownloadProgress%", color = Color.Black, fontWeight = FontWeight.ExtraBold)
+                                                            } else {
+                                                                Icon(Icons.Filled.SystemUpdate, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                                                                Spacer(modifier = Modifier.width(6.dp))
+                                                                Text(tr(lang, "بىۋاسىتە قاچىلاش", "تثبيت مباشر"), color = Color.Black, fontWeight = FontWeight.ExtraBold)
+                                                            }
+                                                        }
                                                     }
                                                 }
-                                                if (upd.apkDownloadUrl.isNotBlank()) {
-                                                    Button(
-                                                        onClick = {
-                                                            runCatching {
-                                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(upd.apkDownloadUrl)))
-                                                            }
-                                                        },
-                                                        colors = ButtonDefaults.buttonColors(containerColor = RoyalGold)
-                                                    ) {
-                                                        Text(tr(lang, "يېڭىلاش", "تحديث"), color = Color.Black, fontWeight = FontWeight.Bold)
-                                                    }
+                                                if (isDownloadingApk) {
+                                                    LinearProgressIndicator(
+                                                        progress = { apkDownloadProgress / 100f },
+                                                        color = ClientEmerald,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(8.dp)
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                    )
                                                 }
                                             }
                                         }
@@ -1992,7 +2040,6 @@ fun ClientHomeScreen(
             }
         }
 
-        // 1. باش بەت ئىزدەش رامكىسى (ئىزدىگەندە پەقەت كىشى ئىسىملىرىلا رەت تەرتىپ بىلەن چىقىدۇ)
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = cardColor,
@@ -2026,7 +2073,6 @@ fun ClientHomeScreen(
             }
         }
 
-        // 2. سىنبەلگە بىلەنلا كۆرۈنىدىغان 3 بۆلۈم (باسقاندا پەقەت كىشى ئىسىملىرى رەت تەرتىپ بىلەن چىقىدۇ)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -2064,7 +2110,6 @@ fun ClientHomeScreen(
             onClick = { onOpenCategoryOverlay(HomeOverlayView.DEBT_ACCOUNTS) }
         )
 
-        // 3. FAST.com تور ئېقىم مىقدارى ۋە تېزلىك ئۆلچىگۈچ
         Surface(
             shape = RoundedCornerShape(26.dp),
             color = cardColor,
@@ -2478,10 +2523,6 @@ fun ClientSettingsScreen(
     }
 }
 
-/**
- * 3-بەت: ھېساباتلار بېتىمۇ رەت تەرتىپ بويىچە پەقەت ئىسىم ۋە سىنبەلگە بىلەنلا كۆرۈنىدۇ،
- * ئىسىمنى چەككەندە ئاندىن شۇ كىشىنىڭ تولۇق مەلۇماتلىرى چىقىدۇ!
- */
 @Composable
 fun ClientAccountsScreen(
     lang: ClientLanguage,
@@ -2928,11 +2969,6 @@ fun ClientRemindersAndFeedbackScreen(
     }
 }
 
-/**
- * ئىزدىگەندە ياكى باش بەتتىكى مۇناسىۋەتلىك رامكىلارنى باسقاندا ئېچىلىدىغان بەت:
- * 1-قەدەمدە پەقەت «رەت نومۇرى + سىنبەلگە + كىشى ئىسمى» لا تىزىلىپ چىقىدۇ؛
- * 2-قەدەمدە شۇ ئىسىمنى چەككەندە ئاندىن شۇ كىشىنىڭ قالغان بارلىق مەلۇماتلىرى تولۇق ئېچىلىدۇ!
- */
 @Composable
 fun ClientDedicatedOverlayPage(
     lang: ClientLanguage,
@@ -2988,7 +3024,6 @@ fun ClientDedicatedOverlayPage(
 
     Scaffold(containerColor = Color.Transparent) { innerPadding ->
         if (selectedPerson != null) {
-            // 2-قەدەم: ئىسىمنى چەككەندە ئېچىلىدىغان تولۇق تەپسىلات بېتى
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -3047,7 +3082,6 @@ fun ClientDedicatedOverlayPage(
                 }
             }
         } else {
-            // 1-قەدەم: پەقەت كىشى ئىسىملىرىلا رەت تەرتىپ بويىچە سىنبەلگە بىلەن چىقىدۇ
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -3277,6 +3311,58 @@ fun PersonAccountFormDialog(
             }
         }
     )
+}
+
+/**
+ * باشقۇرغۇچى ئەپىدىن ۋاسىتىسىز ئەۋەتىلگەن يېڭى APK ھۆججىتىنى ئەپ ئىچىدىلا چۈشۈرۈپ بىۋاسىتە قاچىلاش
+ */
+suspend fun downloadAndInstallApkInApp(
+    context: Context,
+    apkUrl: String,
+    onProgressPercent: (Int) -> Unit
+): Result<Unit> = withContext(Dispatchers.IO) {
+    runCatching {
+        val targetFile = File(context.filesDir, "HesabatUpdate.apk")
+        if (targetFile.exists()) targetFile.delete()
+
+        val conn = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10000
+            readTimeout = 20000
+            instanceFollowRedirects = true
+        }
+        val totalLen = conn.contentLength.coerceAtLeast(1)
+        var downloaded = 0L
+        val buf = ByteArray(16384)
+
+        conn.inputStream.use { input ->
+            targetFile.outputStream().use { output ->
+                while (true) {
+                    val r = input.read(buf)
+                    if (r <= 0) break
+                    output.write(buf, 0, r)
+                    downloaded += r
+                    val pct = ((downloaded * 100L) / totalLen).toInt().coerceIn(1, 100)
+                    withContext(Dispatchers.Main) {
+                        onProgressPercent(pct)
+                    }
+                }
+            }
+        }
+
+        withContext(Dispatchers.Main) {
+            val apkUri = FileProvider.getUriForFile(
+                context,
+                "com.example.hesabat.client.fileprovider",
+                targetFile
+            )
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(installIntent)
+        }
+    }
 }
 
 suspend fun runCalibratedFastSpeedTest(
